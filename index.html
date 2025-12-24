@@ -257,6 +257,12 @@
             transform: translateX(450px);
             opacity: 0;
         }
+
+        /* Row animation */
+        .row-anim {
+            transition: transform 0.35s ease-in-out, opacity 0.35s ease-in-out;
+            will-change: transform, opacity;
+        }
     </style>
 </head>
 
@@ -296,7 +302,7 @@
             appId: "1:954817549476:web:2853416917fda7472f0231",
             measurementId: "G-V0JS3MWPZB",
             databaseURL: "https://productionalive-23e02-default-rtdb.asia-southeast1.firebasedatabase.app"
-        }; /* Asia‑southeast1 URL को ही use करना है [web:24][web:28] */
+        };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
@@ -308,8 +314,11 @@
         let lastStateStr = "";
         let currentPercentages = {};
         let featuredPlayer = null;
+        let eliminatedCount = 0; // NEW: Track elimination order
 
-        onValue(featuredPlayerRef, snap => { featuredPlayer = snap.val() || null; });
+        onValue(featuredPlayerRef, snap => {
+            featuredPlayer = snap.val() || null;
+        });
 
         onValue(activeEventRef, snap => {
             const data = snap.val();
@@ -321,6 +330,12 @@
             const data = snap.val() || [];
             const oldStr = lastStateStr;
             lastStateStr = JSON.stringify(data);
+
+            // Reset elimination counter when all teams are alive (match reset)
+            if (data.every(t => t.status.some(s => s > 0))) {
+                eliminatedCount = 0;
+            }
+
             updateOverlay(data, oldStr);
         });
 
@@ -394,10 +409,50 @@
                 top4UI.style.display = 'none';
             }
 
-            renderTable([...data].sort((a, b) => b.pts - a.pts), aliveTeams.length, oldStr);
+            // ADVANCED SORTING LOGIC (unchanged)
+            const sortedData = [...data].sort((a, b) => {
+                const aDead = a.status.every(s => s === 0);
+                const bDead = b.status.every(s => s === 0);
+
+                const aZeroAll = a.pts === 0 && (a.elims || 0) === 0;
+                const bZeroAll = b.pts === 0 && (b.elims || 0) === 0;
+
+                // 1) Alive teams above dead teams
+                if (!aDead && bDead) return -1;
+                if (aDead && !bDead) return 1;
+
+                // 2) Both alive
+                if (!aDead && !bDead) {
+                    if (b.pts !== a.pts) return b.pts - a.pts;
+                    return (b.elims || 0) - (a.elims || 0);
+                }
+
+                // 3) Both dead
+
+                // 3a) teams with pts=0 and elims=0 go to very bottom
+                if (aZeroAll && !bZeroAll) return 1;
+                if (!aZeroAll && bZeroAll) return -1;
+
+                // 3b) other dead teams: higher pts first, then higher elims
+                if (b.pts !== a.pts) return b.pts - a.pts;
+                return (b.elims || 0) - (a.elims || 0);
+            });
+
+            renderTable(sortedData, aliveTeams.length, oldStr, data.length); // Pass total teams
         }
 
-        function renderTable(data, currentAlive, oldStr) {
+        function renderTable(data, currentAlive, oldStr, totalTeams) {
+            const board = document.getElementById('board');
+
+            // 1. Save old positions
+            const oldPositions = {};
+            Array.from(board.querySelectorAll('[data-team-id]')).forEach(row => {
+                const id = row.getAttribute('data-team-id');
+                const rect = row.getBoundingClientRect();
+                oldPositions[id] = rect.top;
+            });
+
+            // 2. Build new HTML
             let html = `
         <div class="row" style="background:rgba(0,0,0,0.5);font-size:11px;height:30px;">
             <div style="width:25px;text-align:center;">#</div>
@@ -416,28 +471,68 @@
                 const isDead = team.status.every(s => s === 0);
                 const isFirst = i === 0 && !isDead;
 
+                // NEW ELIMINATION LOGIC: Show rank from bottom (21,20,19...)
                 if (old) {
                     const prev = old.find(t => t.id === team.id);
                     if (prev && prev.status.some(s => s > 0) && isDead) {
-                        showElim(i + 1, team);
+                        eliminatedCount += 1;
+                        const elimRank = totalTeams - eliminatedCount + 1; // 21,20,19...
+                        showElim(elimRank, team);
                     }
                 }
 
                 html += `
-            <div class="row ${isFirst ? 'rank-1-glow' : ''}" style="${isDead ? 'opacity:0.35;filter:grayscale(1);' : ''}">
-                <div style="width:25px;text-align:center;">${i + 1}</div>
-                <div style="flex:1;display:flex;align-items:center;">
-                    <div class="team-logo-box">${team.img ? `<img src="${team.img}">` : ''}</div>${team.name}
-                </div>
-                <div style="width:35px;text-align:center;color:var(--colorr);">${team.elims || 0}</div>
-                <div style="width:42px;display:flex;gap:2px;justify-content:center;">
-                    ${team.status.map(s => `<div style="width:4px;height:16px;background:${s > 0 ? 'var(--alive-color)' : 'rgba(255,255,255,0.1)'}"></div>`).join('')}
-                </div>
-                <div style="width:40px;text-align:center;">${team.pts}</div>
-            </div>`;
+        <div class="row row-anim ${isFirst ? 'rank-1-glow' : ''}"
+             data-team-id="${team.id}"
+             style="${isDead ? 'opacity:0.35;filter:grayscale(1);' : ''}">
+            <div style="width:25px;text-align:center;">${i + 1}</div>
+            <div style="flex:1;display:flex;align-items:center;">
+                <div class="team-logo-box">${team.img ? `<img src="${team.img}">` : ''}</div>${team.name}
+            </div>
+            <div style="width:35px;text-align:center;color:var(--colorr);">${team.elims || 0}</div>
+            <div style="width:42px;display:flex;gap:2px;justify-content:center;">
+                ${team.status.map(s => `<div style="width:4px;height:16px;background:${s > 0 ? 'var(--alive-color)' : 'rgba(255,255,255,0.1)'}"></div>`).join('')}
+            </div>
+            <div style="width:40px;text-align:center;">${team.pts}</div>
+        </div>`;
             });
 
-            document.getElementById('board').innerHTML = html;
+            // 3. Set new HTML
+            board.innerHTML = html;
+
+            // 4. Animate from old position to new position
+            requestAnimationFrame(() => {
+                const rows = Array.from(board.querySelectorAll('[data-team-id]'));
+                const newPositions = {};
+                rows.forEach(row => {
+                    const id = row.getAttribute('data-team-id');
+                    const rect = row.getBoundingClientRect();
+                    newPositions[id] = rect.top;
+                });
+
+                rows.forEach(row => {
+                    const id = row.getAttribute('data-team-id');
+                    const oldTop = oldPositions[id];
+                    const newTop = newPositions[id];
+                    if (oldTop !== undefined) {
+                        const delta = oldTop - newTop;
+                        if (delta !== 0) {
+                            row.style.transform = `translateY(${delta}px)`;
+                            requestAnimationFrame(() => {
+                                row.style.transform = 'translateY(0)';
+                            });
+                        }
+                    } else {
+                        // New row: fade in from slight offset
+                        row.style.opacity = '0';
+                        row.style.transform = 'translateY(10px)';
+                        requestAnimationFrame(() => {
+                            row.style.opacity = '1';
+                            row.style.transform = 'translateY(0)';
+                        });
+                    }
+                });
+            });
         }
 
         function renderTop4(teams) {
@@ -445,21 +540,21 @@
             teams.forEach(team => {
                 const winProb = currentPercentages[team.id] || 0;
                 html += `
-            <div class="top4-card">
-                <div style="grid-row:1/3;display:flex;align-items:center;justify-content:center;border-right:1px solid #eee;">
-                    ${team.img ? `<img src="${team.img}" style="width:100%;height:100%;object-fit:cover;">` : ''}
-                </div>
-                <div class="t4-name-box">${team.name}</div>
-                <div style="background:var(--purple-main);display:flex;align-items:center;justify-content:center;gap:4px;">
-                    ${team.status.map(s => `<div style="width:8px;height:28px;background:${s > 0 ? '#fff' : 'rgba(255,255,255,0.3)'}"></div>`).join('')}
-                </div>
-                <div style="grid-column:2/3;display:flex;align-items:center;padding-left:15px;font-weight:800;color:var(--purple-dark);font-size:11px;">
-                    PROBABILITY<br>OF WINNING
-                </div>
-                <div style="grid-column:3/4;display:flex;align-items:center;justify-content:center;font-family:'Impact';font-size:32px;color:var(--purple-dark);border-left:1px solid #ddd;">
-                    ${winProb}%
-                </div>
-            </div>`;
+        <div class="top4-card">
+            <div style="grid-row:1/3;display:flex;align-items:center;justify-content:center;border-right:1px solid #eee;">
+                ${team.img ? `<img src="${team.img}" style="width:100%;height:100%;object-fit:cover;">` : ''}
+            </div>
+            <div class="t4-name-box">${team.name}</div>
+            <div style="background:var(--purple-main);display:flex;align-items:center;justify-content:center;gap:4px;">
+                ${team.status.map(s => `<div style="width:8px;height:28px;background:${s > 0 ? '#fff' : 'rgba(255,255,255,0.3)'}"></div>`).join('')}
+            </div>
+            <div style="grid-column:2/3;display:flex;align-items:center;padding-left:15px;font-weight:800;color:var(--purple-dark);font-size:11px;">
+                PROBABILITY<br>OF WINNING
+            </div>
+            <div style="grid-column:3/4;display:flex;align-items:center;justify-content:center;font-family:'Impact';font-size:32px;color:var(--purple-dark);border-left:1px solid #ddd;">
+                ${winProb}%
+            </div>
+        </div>`;
             });
             document.getElementById('top4-bar').innerHTML = html;
         }
