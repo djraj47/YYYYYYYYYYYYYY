@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Tournament Overlay - Firebase + Elim Fix</title>
+    <title>Tournament Overlay - Firebase</title>
     <style>
         :root {
             --purple-main: #530404;
@@ -29,28 +29,19 @@
             width: 1920px;
             height: 1080px;
             background-color: #00FF00;
+            /* green screen */
             position: relative;
             border: 4px solid red;
             box-sizing: border-box;
             overflow: hidden;
         }
 
-        /* --- GLOW EFFECT FOR #1 TEAM --- */
         .rank-1-glow {
             background: rgba(212, 212, 28, 0.2) !important;
             box-shadow: inset 0 0 15px rgba(212, 212, 28, 0.4);
             position: relative;
         }
 
-        .rank-1-glow::after {
-            position: absolute;
-            left: 2px;
-            top: 2px;
-            font-size: 8px;
-            color: var(--yellow-accent);
-        }
-
-        /* --- LEFT POPUP DESIGN --- */
         #left-popup-container {
             position: absolute;
             left: 40px;
@@ -130,7 +121,7 @@
             filter: drop-shadow(5px 5px 10px rgba(0, 0, 0, 0.5));
         }
 
-        /* --- ELIMINATION POPUP --- */
+        /* ELIM POPUP */
         #elim-popup {
             position: absolute;
             top: 200px;
@@ -192,7 +183,7 @@
             text-align: center;
         }
 
-        /* --- TOP 4 & LEADERBOARD --- */
+        /* TOP 4 + TABLE */
         #top4-bar {
             position: absolute;
             top: 40px;
@@ -273,15 +264,14 @@
     <div id="obs-canvas">
         <div id="left-popup-container"></div>
 
-        <!-- ELIMINATION POPUP -->
         <div id="elim-popup">
             <div
-                style="display: grid; grid-template-columns: 1fr 80px 1fr; width: 100%; align-items: center; justify-items: center; margin-bottom: 8px;">
+                style="display:grid;grid-template-columns:1fr 80px 1fr;width:100%;align-items:center;justify-items:center;margin-bottom:8px;">
                 <div class="popup-rank" id="p-rank">#--</div>
                 <div id="p-logo" class="popup-logo-center"></div>
-                <div style="text-align: center;">
+                <div style="text-align:center;">
                     <span class="popup-elims-val" id="p-elims">0</span>
-                    <span style="font-size:10px; font-weight:800; display:block;">ELIMS</span>
+                    <span style="font-size:10px;font-weight:800;display:block;">ELIMS</span>
                 </div>
             </div>
             <div class="popup-footer-text">ELIMINATED</div>
@@ -293,9 +283,7 @@
         </div>
     </div>
 
-    <!-- FIREBASE + OVERLAY LOGIC -->
     <script type="module">
-        // -------- Firebase init (Realtime DB URL fixed) --------
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
         import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js";
 
@@ -307,9 +295,8 @@
             messagingSenderId: "954817549476",
             appId: "1:954817549476:web:2853416917fda7472f0231",
             measurementId: "G-V0JS3MWPZB",
-            // IMPORTANT: सही URL ( .firebaseio.com )
-            databaseURL: "https://productionalive-23e02-default-rtdb.firebaseio.com/"
-        };
+            databaseURL: "https://productionalive-23e02-default-rtdb.asia-southeast1.firebasedatabase.app"
+        }; /* Asia‑southeast1 URL को ही use करना है [web:24][web:28] */
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
@@ -318,40 +305,25 @@
         const activeEventRef = ref(db, "activeEvent");
         const featuredPlayerRef = ref(db, "featuredPlayer");
 
-        // -------- Overlay state --------
         let lastStateStr = "";
-        let lastEventTs = 0;
         let currentPercentages = {};
-        let currentTeams = [];
-        let currentEvent = null;
         let featuredPlayer = null;
 
-        // Listen esports data (teams)
-        onValue(esportsDataRef, snap => {
-            const data = snap.val() || [];
-            const newStr = JSON.stringify(data);
-            const oldStr = lastStateStr;
-            lastStateStr = newStr;
-            currentTeams = data;
-            updateOverlay(oldStr);
-        });
+        onValue(featuredPlayerRef, snap => { featuredPlayer = snap.val() || null; });
 
-        // Listen notifications
         onValue(activeEventRef, snap => {
             const data = snap.val();
-            if (data && data.ts > lastEventTs) {
-                lastEventTs = data.ts;
-                currentEvent = data;
-                showSideNotif(data, featuredPlayer);
-            }
+            if (!data) return;
+            showSideNotif(data, featuredPlayer);
         });
 
-        // Listen featured player
-        onValue(featuredPlayerRef, snap => {
-            featuredPlayer = snap.val();
+        onValue(esportsDataRef, snap => {
+            const data = snap.val() || [];
+            const oldStr = lastStateStr;
+            lastStateStr = JSON.stringify(data);
+            updateOverlay(data, oldStr);
         });
 
-        // -------- Helper functions --------
         function calculateCombinedPercentages(teams) {
             let scores = {};
             let totalScore = 0;
@@ -364,7 +336,7 @@
             let results = {};
             let checkTotal = 0;
             teams.forEach(t => {
-                let pct = totalScore > 0 ? Math.round((scores[t.id] / totalScore) * 100) : 0;
+                const pct = totalScore > 0 ? Math.round((scores[t.id] / totalScore) * 100) : 0;
                 results[t.id] = pct;
                 checkTotal += pct;
             });
@@ -379,14 +351,14 @@
             const id = 'notif-' + Date.now();
             const faceImg = (feat && feat.img) ? feat.img : "";
             const html = `
-                <div class="side-notif" id="${id}">
-                    <div class="notif-logo-circle">${data.logo ? `<img src="${data.logo}">` : ''}</div>
-                    <div>
-                        <div class="notif-label">${data.type}</div>
-                        <div class="notif-sub-label">${data.player}</div>
-                    </div>
-                    <div class="notif-face-overlay">${faceImg ? `<img src="${faceImg}">` : ''}</div>
-                </div>`;
+            <div class="side-notif" id="${id}">
+                <div class="notif-logo-circle">${data.logo ? `<img src="${data.logo}">` : ''}</div>
+                <div>
+                    <div class="notif-label">${data.type}</div>
+                    <div class="notif-sub-label">${data.player}</div>
+                </div>
+                <div class="notif-face-overlay">${faceImg ? `<img src="${faceImg}">` : ''}</div>
+            </div>`;
             container.insertAdjacentHTML('beforeend', html);
             setTimeout(() => document.getElementById(id).classList.add('show'), 50);
             setTimeout(() => {
@@ -398,9 +370,7 @@
             }, 5000);
         }
 
-        // ---- ELIM POPUP FIXED ----
         function showElim(rank, team) {
-            // अब कोई rank block नहीं – हर team full dead होने पर popup
             document.getElementById('p-rank').innerText = "#" + rank;
             document.getElementById('p-elims').innerText = team.elims || 0;
             document.getElementById('p-logo').innerHTML = team.img ? `<img src="${team.img}">` : "";
@@ -409,9 +379,8 @@
             setTimeout(() => el.classList.remove('show'), 3000);
         }
 
-        function updateOverlay(prevStateStr) {
-            const stored = currentTeams || [];
-            const aliveTeams = stored.filter(t => t.status.some(s => s > 0));
+        function updateOverlay(data, oldStr) {
+            const aliveTeams = data.filter(t => t.status.some(s => s > 0));
             const leaderUI = document.getElementById('leader-ui');
             const top4UI = document.getElementById('top4-bar');
 
@@ -425,49 +394,47 @@
                 top4UI.style.display = 'none';
             }
 
-            renderTable([...stored].sort((a, b) => b.pts - a.pts), aliveTeams.length, prevStateStr);
+            renderTable([...data].sort((a, b) => b.pts - a.pts), aliveTeams.length, oldStr);
         }
 
-        function renderTable(data, currentAlive, prevStateStr) {
+        function renderTable(data, currentAlive, oldStr) {
             let html = `
-                <div class="row" style="background:rgba(0,0,0,0.5); font-size:11px; height:30px;">
-                    <div style="width:25px; text-align:center;">#</div>
-                    <div style="flex:1; padding-left:44px;">TEAM</div>
-                    <div style="width:35px; text-align:center;">ELIM</div>
-                    <div style="width:42px; text-align:center;">ALIVE</div>
-                    <div style="width:40px; text-align:center;">PTS</div>
-                </div>`;
+        <div class="row" style="background:rgba(0,0,0,0.5);font-size:11px;height:30px;">
+            <div style="width:25px;text-align:center;">#</div>
+            <div style="flex:1;padding-left:44px;">TEAM</div>
+            <div style="width:35px;text-align:center;">ELIM</div>
+            <div style="width:42px;text-align:center;">ALIVE</div>
+            <div style="width:40px;text-align:center;">PTS</div>
+        </div>`;
 
-            let oldState = null;
-            if (prevStateStr) {
-                try { oldState = JSON.parse(prevStateStr); } catch (e) { oldState = null; }
+            let old = null;
+            if (oldStr) {
+                try { old = JSON.parse(oldStr); } catch (e) { old = null; }
             }
 
             data.forEach((team, i) => {
                 const isDead = team.status.every(s => s === 0);
                 const isFirst = i === 0 && !isDead;
 
-                // elimination detection (पहले alive था, अब full dead है)
-                if (oldState) {
-                    const oldTeam = oldState.find(t => t.id === team.id);
-                    if (oldTeam && oldTeam.status.some(s => s > 0) && isDead) {
-                        const rank = i + 1;   // list index से rank
-                        showElim(rank, team);
+                if (old) {
+                    const prev = old.find(t => t.id === team.id);
+                    if (prev && prev.status.some(s => s > 0) && isDead) {
+                        showElim(i + 1, team);
                     }
                 }
 
                 html += `
-                    <div class="row ${isFirst ? 'rank-1-glow' : ''}" style="${isDead ? 'opacity:0.35; filter:grayscale(1);' : ''}">
-                        <div style="width:25px; text-align:center;">${i + 1}</div>
-                        <div style="flex:1; display:flex; align-items:center;">
-                            <div class="team-logo-box">${team.img ? `<img src="${team.img}">` : ''}</div>${team.name}
-                        </div>
-                        <div style="width:35px; text-align:center; color:var(--colorr);">${team.elims || 0}</div>
-                        <div style="width:42px; display:flex; gap:2px; justify-content:center;">
-                            ${team.status.map(s => `<div style="width:4px; height:16px; background:${s > 0 ? 'var(--alive-color)' : 'rgba(255,255,255,0.1)'}"></div>`).join('')}
-                        </div>
-                        <div style="width:40px; text-align:center;">${team.pts}</div>
-                    </div>`;
+            <div class="row ${isFirst ? 'rank-1-glow' : ''}" style="${isDead ? 'opacity:0.35;filter:grayscale(1);' : ''}">
+                <div style="width:25px;text-align:center;">${i + 1}</div>
+                <div style="flex:1;display:flex;align-items:center;">
+                    <div class="team-logo-box">${team.img ? `<img src="${team.img}">` : ''}</div>${team.name}
+                </div>
+                <div style="width:35px;text-align:center;color:var(--colorr);">${team.elims || 0}</div>
+                <div style="width:42px;display:flex;gap:2px;justify-content:center;">
+                    ${team.status.map(s => `<div style="width:4px;height:16px;background:${s > 0 ? 'var(--alive-color)' : 'rgba(255,255,255,0.1)'}"></div>`).join('')}
+                </div>
+                <div style="width:40px;text-align:center;">${team.pts}</div>
+            </div>`;
             });
 
             document.getElementById('board').innerHTML = html;
@@ -478,21 +445,21 @@
             teams.forEach(team => {
                 const winProb = currentPercentages[team.id] || 0;
                 html += `
-                    <div class="top4-card">
-                        <div style="grid-row:1/3; display:flex; align-items:center; justify-content:center; border-right:1px solid #eee;">
-                            ${team.img ? `<img src="${team.img}" style="width:100%; height:100%; object-fit:cover;">` : ''}
-                        </div>
-                        <div class="t4-name-box">${team.name}</div>
-                        <div style="background:var(--purple-main); display:flex; align-items:center; justify-content:center; gap:4px;">
-                            ${team.status.map(s => `<div style="width:8px; height:28px; background:${s > 0 ? '#fff' : 'rgba(255,255,255,0.3)'}"></div>`).join('')}
-                        </div>
-                        <div style="grid-column:2/3; display:flex; align-items:center; padding-left:15px; font-weight:800; color:var(--purple-dark); font-size:11px;">
-                            PROBABILITY<br>OF WINNING
-                        </div>
-                        <div style="grid-column:3/4; display:flex; align-items:center; justify-content:center; font-family:'Impact'; font-size:32px; color:var(--purple-dark); border-left:1px solid #ddd;">
-                            ${winProb}%
-                        </div>
-                    </div>`;
+            <div class="top4-card">
+                <div style="grid-row:1/3;display:flex;align-items:center;justify-content:center;border-right:1px solid #eee;">
+                    ${team.img ? `<img src="${team.img}" style="width:100%;height:100%;object-fit:cover;">` : ''}
+                </div>
+                <div class="t4-name-box">${team.name}</div>
+                <div style="background:var(--purple-main);display:flex;align-items:center;justify-content:center;gap:4px;">
+                    ${team.status.map(s => `<div style="width:8px;height:28px;background:${s > 0 ? '#fff' : 'rgba(255,255,255,0.3)'}"></div>`).join('')}
+                </div>
+                <div style="grid-column:2/3;display:flex;align-items:center;padding-left:15px;font-weight:800;color:var(--purple-dark);font-size:11px;">
+                    PROBABILITY<br>OF WINNING
+                </div>
+                <div style="grid-column:3/4;display:flex;align-items:center;justify-content:center;font-family:'Impact';font-size:32px;color:var(--purple-dark);border-left:1px solid #ddd;">
+                    ${winProb}%
+                </div>
+            </div>`;
             });
             document.getElementById('top4-bar').innerHTML = html;
         }
