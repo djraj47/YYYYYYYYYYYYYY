@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Tournament Overlay - Firebase Integration</title>
+    <style>
+        :root {
+            --purple-main: #530404;
+            --purple-dark: #c20922;
+            --bg-gradient: linear-gradient(180deg, var(--purple-main) 0%, var(--purple-dark) 100%);
+            --yellow-accent: #d4381c;
+            --alive-color: #f2e200;
+            --colorr: rgb(211, 197, 8);
+        }
+
+        /* Centering the entire 1920x1080 canvas */
+        body {
+            background-color: #1a1a1a;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        #obs-canvas {
+            width: 1920px;
+            height: 1080px;
+            background-color: #00FF00;
+            position: relative;
+            border: 4px solid red;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        /* --- GLOW EFFECT FOR #1 TEAM --- */
+        .rank-1-glow {
+            background: rgba(212, 212, 28, 0.2) !important;
+            box-shadow: inset 0 0 15px rgba(212, 212, 28, 0.4);
+            position: relative;
+        }
+
+        .rank-1-glow::after {
+            position: absolute;
+            left: 2px;
+            top: 2px;
+            font-size: 8px;
+            color: var(--yellow-accent);
+        }
+
+        /* --- LEFT POPUP DESIGN --- */
+        #left-popup-container {
+            position: absolute;
+            left: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 5000;
+        }
+
+        .side-notif {
+            width: 350px;
+            background: #ffffff;
+            border-radius: 5px 40px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            position: relative;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5);
+            border-bottom: 5px solid var(--yellow-accent);
+            opacity: 0;
+            transform: translateX(-150px) scale(0.8);
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .side-notif.show {
+            opacity: 1;
+            transform: translateX(0) scale(1);
+        }
+
+        .notif-logo-circle {
+            width: 60px;
+            height: 60px;
+            background: #f0f0f0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #ddd;
+            margin-right: 15px;
+            margin-left: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .notif-logo-circle img {
+            width: 90%;
+            height: 90%;
+            object-fit: contain;
+        }
+
+        .notif-label {
+            font-family: 'Impact', sans-serif;
+            font-size: 30px;
+            color: #111;
+            line-height: 1;
+            text-transform: uppercase;
+        }
+
+        .notif-sub-label {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--purple-main);
+            text-transform: uppercase;
+        }
+
+        .notif-face-overlay {
+            position: absolute;
+            right: -30px;
+            bottom: -1px;
+            height: 200%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .notif-face-overlay img {
+            height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(5px 5px 10px rgba(0, 0, 0, 0.5));
+        }
+
+        /* --- ELIMINATION POPUP --- */
+        #elim-popup {
+            position: absolute;
+            top: 200px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-600px);
+            width: 320px;
+            background: #fff;
+            border-radius: 10px 60px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 9999;
+            color: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #elim-popup.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .popup-rank {
+            font-size: 45px;
+            font-weight: 900;
+            font-family: 'Impact';
+        }
+
+        .popup-logo-center {
+            width: 75px;
+            height: 75px;
+            background: #f0f0f0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .popup-logo-center img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .popup-elims-val {
+            font-size: 40px;
+            font-weight: 900;
+            font-family: 'Impact';
+        }
+
+        .popup-footer-text {
+            font-size: 32px;
+            font-weight: 900;
+            font-family: 'Impact';
+            border-top: 3px solid var(--yellow-accent);
+            width: 95%;
+            text-align: center;
+        }
+
+        /* --- TOP 4 & LEADERBOARD --- */
+        #top4-bar {
+            position: absolute;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            gap: 15px;
+        }
+
+        .top4-card {
+            width: 320px;
+            height: 95px;
+            background: #fff;
+            display: grid;
+            grid-template-columns: 85px 1fr 85px;
+            grid-template-rows: 55px 40px;
+        }
+
+        .t4-name-box {
+            background: var(--purple-dark);
+            color: white;
+            display: flex;
+            align-items: center;
+            padding-left: 15px;
+            font-weight: 900;
+            font-size: 24px;
+            font-family: 'Impact';
+        }
+
+        .leaderboard-wrapper {
+            position: absolute;
+            bottom: 1px;
+            right: 1px;
+            width: 280px;
+            transition: 0.8s;
+        }
+
+        .leaderboard-container {
+            background: var(--bg-gradient);
+            color: white;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .row {
+            display: flex;
+            align-items: center;
+            height: 35px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-weight: 800;
+            font-size: 14px;
+        }
+
+        .team-logo-box {
+            width: 35px;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 6px;
+        }
+
+        .team-logo-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .slide-out {
+            transform: translateX(450px);
+            opacity: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="obs-canvas">
+        <div id="left-popup-container"></div>
+        <div id="elim-popup">
+            <div style="display: grid; grid-template-columns: 1fr 80px 1fr; width: 100%; align-items: center; justify-items: center; margin-bottom: 8px;">
+                <div class="popup-rank" id="p-rank">#--</div>
+                <div id="p-logo" class="popup-logo-center"></div>
+                <div style="text-align: center;">
+                    <span class="popup-elims-val" id="p-elims">0</span>
+                    <span style="font-size:10px; font-weight:800; display:block;">ELIMS</span>
+                </div>
+            </div>
+            <div class="popup-footer-text">ELIMINATED</div>
+        </div>
+        <div id="top4-bar"></div>
+        <div class="leaderboard-wrapper" id="leader-ui">
+            <div class="leaderboard-container" id="board"></div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+        import { getDatabase, ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js";
+
+        // Your Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDAnI2pDCsxGAaARD1XGao7O3KGU-Y1uhk",
+            authDomain: "productionalive-23e02.firebaseapp.com",
+            projectId: "productionalive-23e02",
+            storageBucket: "productionalive-23e02.firebasestorage.app",
+            messagingSenderId: "954817549476",
+            appId: "1:954817549476:web:2853416917fda7472f0231",
+            measurementId: "G-V0JS3MWPZB",
+            databaseURL: "https://productionalive-23e02-default-rtdb.asia-southeast1.firebasedatabase.app/" // Add this line
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        // Firebase references
+        const esportsDataRef = ref(database, 'esportsData');
+        const activeEventRef = ref(database, 'activeEvent');
+        const featuredPlayerRef = ref(database, 'featuredPlayer');
+
+        // Local state
+        let lastStateStr = "";
+        let lastEventTs = 0;
+        let currentPercentages = {};
+        let currentEsportsData = [];
+        let currentEventData = null;
+        let currentFeaturedPlayer = null;
+
+        // Listen for esportsData changes
+        onValue(esportsDataRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                const dataStr = JSON.stringify(data);
+                if (dataStr !== lastStateStr) {
+                    currentEsportsData = data;
+                    lastStateStr = dataStr;
+                    updateUI();
+                }
+            }
+        });
+
+        // Listen for activeEvent changes
+        onValue(activeEventRef, (snapshot) => {
+            const eventData = snapshot.val();
+            if (eventData && eventData.ts > lastEventTs) {
+                lastEventTs = eventData.ts;
+                currentEventData = eventData;
+                checkEvents();
+            }
+        });
+
+        // Listen for featuredPlayer changes
+        onValue(featuredPlayerRef, (snapshot) => {
+            currentFeaturedPlayer = snapshot.val();
+        });
+
+        // Fallback: Also check localStorage for initial data or offline mode
+        function getLocalData(key) {
+            try {
+                return localStorage.getItem(key);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function calculateCombinedPercentages(teams) {
+            let scores = {};
+            let totalScore = 0;
+            teams.forEach(t => {
+                const alive = t.status.filter(s => s > 0).length;
+                const powerScore = Math.pow(alive, 2);
+                scores[t.id] = powerScore;
+                totalScore += powerScore;
+            });
+            let results = {};
+            let checkTotal = 0;
+            teams.forEach((t) => {
+                let pct = totalScore > 0 ? Math.round((scores[t.id] / totalScore) * 100) : 0;
+                results[t.id] = pct;
+                checkTotal += pct;
+            });
+            if (checkTotal !== 100 && teams.length > 0) {
+                results[teams[0].id] += (100 - checkTotal);
+            }
+            return results;
+        }
+
+        function checkEvents() {
+            if (currentEventData) {
+                showSideNotif(currentEventData, currentFeaturedPlayer);
+            }
+        }
+
+        function showSideNotif(data, feat) {
+            const container = document.getElementById('left-popup-container');
+            const id = 'notif-' + Date.now();
+            const faceImg = (feat && feat.img) ? feat.img : "";
+            const html = `
+            <div class="side-notif" id="${id}">
+                <div class="notif-logo-circle">${data.logo ? `<img src="${data.logo}">` : ''}</div>
+                <div><div class="notif-label">${data.type}</div><div class="notif-sub-label">${data.player}</div></div>
+                <div class="notif-face-overlay">${faceImg ? `<img src="${faceImg}">` : ''}</div>
+            </div>`;
+            container.insertAdjacentHTML('beforeend', html);
+            setTimeout(() => document.getElementById(id).classList.add('show'), 50);
+            setTimeout(() => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.classList.remove('show');
+                    setTimeout(() => el.remove(), 600);
+                }
+            }, 5000);
+        }
+
+        function showElim(rank, team) {
+            if (rank <= 4) return;
+            document.getElementById('p-rank').innerText = "#" + rank;
+            document.getElementById('p-elims').innerText = team.elims;
+            document.getElementById('p-logo').innerHTML = team.img ? `<img src="${team.img}">` : "";
+            const el = document.getElementById('elim-popup');
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 3000);
+        }
+
+        function updateUI() {
+            const stored = currentEsportsData || [];
+            const aliveTeams = stored.filter(t => t.status.some(s => s > 0));
+            const leaderUI = document.getElementById('leader-ui');
+            const top4UI = document.getElementById('top4-bar');
+
+            if (aliveTeams.length <= 4 && aliveTeams.length > 0) {
+                leaderUI.classList.add('slide-out');
+                top4UI.style.display = 'flex';
+                currentPercentages = calculateCombinedPercentages(aliveTeams);
+                renderTop4(aliveTeams);
+            } else {
+                leaderUI.classList.remove('slide-out');
+                top4UI.style.display = 'none';
+            }
+            renderTable([...stored].sort((a, b) => b.pts - a.pts), aliveTeams.length);
+        }
+
+        function renderTable(data, currentAlive) {
+            let html = `<div class="row" style="background:rgba(0,0,0,0.5); font-size:11px; height:30px;"><div style="width:25px; text-align:center;">#</div><div style="flex:1; padding-left:44px;">TEAM</div><div style="width:35px; text-align:center;">ELIM</div><div style="width:42px; text-align:center;">ALIVE</div><div style="width:40px; text-align:center;">PTS</div></div>`;
+            
+            data.forEach((team, i) => {
+                const isDead = team.status.every(s => s === 0);
+                const isFirst = i === 0 && !isDead;
+
+                if (lastStateStr) {
+                    const oldTeam = JSON.parse(lastStateStr).find(t => t.id === team.id);
+                    if (oldTeam && oldTeam.status.some(s => s > 0) && isDead) {
+                        showElim(currentAlive + 1, team);
+                    }
+                }
+                html += `<div class="row ${isFirst ? 'rank-1-glow' : ''}" style="${isDead ? 'opacity:0.35; filter:grayscale(1);' : ''}">
+                <div style="width:25px; text-align:center;">${i + 1}</div>
+                <div style="flex:1; display:flex; align-items:center;">
+                    <div class="team-logo-box">${team.img ? `<img src="${team.img}">` : ''}</div>${team.name}
+                </div>
+                <div style="width:35px; text-align:center; color:var(--colorr);">${team.elims || 0}</div>
+                <div style="width:42px; display:flex; gap:2px; justify-content:center;">${team.status.map(s => `<div style="width:4px; height:16px; background:${s > 0 ? 'var(--alive-color)' : 'rgba(255,255,255,0.1)'}"></div>`).join('')}</div>
+                <div style="width:40px; text-align:center;">${team.pts}</div>
+            </div>`;
+            });
+            document.getElementById('board').innerHTML = html;
+        }
+
+        function renderTop4(teams) {
+            let html = "";
+            teams.forEach(team => {
+                const winProb = currentPercentages[team.id] || 0;
+                html += `<div class="top4-card">
+                <div style="grid-row:1/3; display:flex; align-items:center; justify-content:center; border-right:1px solid #eee;">${team.img ? `<img src="${team.img}" style="width:100%; height:100%; object-fit:cover;">` : ''}</div>
+                <div class="t4-name-box">${team.name}</div>
+                <div style="background:var(--purple-main); display:flex; align-items:center; justify-content:center; gap:4px;">${team.status.map(s => `<div style="width:8px; height:28px; background:${s > 0 ? '#fff' : 'rgba(255,255,255,0.3)'}"></div>`).join('')}</div>
+                <div style="grid-column:2/3; display:flex; align-items:center; padding-left:15px; font-weight:800; color:var(--purple-dark); font-size:11px;">PROBABILITY<br>OF WINNING</div>
+                <div style="grid-column:3/4; display:flex; align-items:center; justify-content:center; font-family:'Impact'; font-size:32px; color:var(--purple-dark); border-left:1px solid #ddd;">${winProb}%</div>
+            </div>`;
+            });
+            document.getElementById('top4-bar').innerHTML = html;
+        }
+
+        // Initialize with localStorage fallback
+        function init() {
+            // Load initial data from localStorage if available
+            const localEsportsData = getLocalData('esportsData');
+            const localEvent = getLocalData('activeEvent');
+            const localFeatured = getLocalData('featuredPlayer');
+            
+            if (localEsportsData) {
+                currentEsportsData = JSON.parse(localEsportsData);
+                lastStateStr = localEsportsData;
+                updateUI();
+            }
+            
+            // Start update loop for localStorage changes (for backward compatibility)
+            setInterval(() => {
+                const localData = getLocalData('esportsData');
+                if (localData && localData !== lastStateStr) {
+                    currentEsportsData = JSON.parse(localData);
+                    lastStateStr = localData;
+                    updateUI();
+                }
+            }, 1000);
+        }
+
+        // Expose functions for external scripts to update Firebase
+        window.updateEsportsData = (data) => {
+            set(esportsDataRef, data);
+            localStorage.setItem('esportsData', JSON.stringify(data)); // Keep local copy
+        };
+
+        window.updateActiveEvent = (eventData) => {
+            set(activeEventRef, eventData);
+            localStorage.setItem('activeEvent', JSON.stringify(eventData));
+        };
+
+        window.updateFeaturedPlayer = (playerData) => {
+            set(featuredPlayerRef, playerData);
+            localStorage.setItem('featuredPlayer', JSON.stringify(playerData));
+        };
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
