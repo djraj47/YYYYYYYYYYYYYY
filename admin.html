@@ -86,6 +86,10 @@
             font-weight: bold;
         }
 
+        .slot-input {
+            width: 50px;
+        }
+
         .admin-logo-preview {
             width: 40px;
             height: 40px;
@@ -172,6 +176,12 @@
             color: white;
         }
 
+        .btn-kill-all {
+            background: #c0392b;
+            color: white;
+            margin-left: 5px;
+        }
+
         .next-match-ui {
             display: none;
             background: #1e1e2f;
@@ -210,6 +220,13 @@
             border-radius: 6px;
             font-size: 12px;
         }
+
+        .small-label {
+            font-size: 11px;
+            color: #ccc;
+            display: block;
+            margin-top: 6px;
+        }
     </style>
 </head>
 
@@ -233,11 +250,31 @@
         <div class="control-row">
             <div class="box">
                 <h4 style="margin:0 0 15px 0;color:var(--yellow);">LEFT POPUPS (NOTIFICATIONS)</h4>
-                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
                     <input type="text" id="pName" placeholder="Player Name" style="width:120px">
                     <select id="pTeam"></select>
                 </div>
-                <div style="margin-top:15px;">
+
+                <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+                    <div>
+                        <input type="file" id="firstKillImgInp" onchange="loadNotifImg('first')"
+                            style="font-size:10px;width:180px;">
+                        <span class="small-label">First Kill Image</span>
+                    </div>
+                    <div>
+                        <input type="file" id="grenadeKillImgInp" onchange="loadNotifImg('grenade')"
+                            style="font-size:10px;width:180px;">
+                        <span class="small-label">Grenade Kill Image</span>
+                    </div>
+                    <div>
+                        <input type="file" id="dominationImgInp" onchange="loadNotifImg('dom')"
+                            style="font-size:10px;width:180px;">
+                        <span class="small-label">Domination Image</span>
+                    </div>
+                </div>
+
+                <div style="margin-top:5px;">
                     <button class="btn btn-kill" onclick="sendEvent('FIRST KILL')">First Kill</button>
                     <button class="btn btn-grenade" onclick="sendEvent('GRENADE KILL')">Grenade Kill</button>
                     <button class="btn btn-dom" onclick="sendEvent('DOMINATING')">Dominating</button>
@@ -270,6 +307,7 @@
                         <th>Total Pts</th>
                         <th>Match Elims</th>
                         <th class="pos-input-cell">Pos Pts</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="adminBody"></tbody>
@@ -289,8 +327,6 @@
             messagingSenderId: "954817549476",
             appId: "1:954817549476:web:2853416917fda7472f0231",
             measurementId: "G-V0JS3MWPZB",
-            // IMPORTANT: सही region वाला URL
-            // warning में जो URL दिख रहा था वही use करना है। [web:24][web:28]
             databaseURL: "https://productionalive-23e02-default-rtdb.asia-southeast1.firebasedatabase.app"
         };
 
@@ -306,6 +342,13 @@
         let matchNum = 1;
         let featImg = "";
         let isConnected = false;
+
+        // separate images for events
+        let notifImages = {
+            first: "",
+            grenade: "",
+            dom: ""
+        };
 
         const statusEl = document.getElementById("connectionStatus");
 
@@ -357,13 +400,16 @@
             displayData.forEach(team => {
                 const tr = document.createElement("tr");
                 tr.innerHTML = `
-                <td style="font-weight:bold;color:var(--purple-main)">${team.slot}</td>
+                <td>
+                    <input class="slot-input" type="number" value="${team.slot}"
+                           oninput="updateSlot('${team.id}', this.value)">
+                </td>
                 <td>
                     <div class="admin-logo-preview" onclick="document.getElementById('f-${team.id}').click()">
                         ${team.img ? `<img src="${team.img}">` : "📁"}
                     </div>
                     <input type="file" id="f-${team.id}" style="display:none"
-                        onchange="uploadLogo('${team.id}', this)">
+                           onchange="uploadLogo('${team.id}', this)">
                 </td>
                 <td>
                     <input class="team-name-input"
@@ -380,6 +426,9 @@
                            oninput="updateField('${team.id}','elims',this.value)" style="width:50px;"></td>
                 <td class="pos-input-cell">
                     <input type="number" class="pos-pts-val" data-tid="${team.id}" value="0" style="width:50px;">
+                </td>
+                <td>
+                    <button class="btn btn-kill-all" onclick="killAllAlive('${team.id}')">Kill All Alive</button>
                 </td>
             `;
                 body.appendChild(tr);
@@ -412,14 +461,38 @@
             if (input.files[0]) reader.readAsDataURL(input.files[0]);
         };
 
+        // Load images for different notif types
+        window.loadNotifImg = function (type) {
+            let inputId = "";
+            if (type === "first") inputId = "firstKillImgInp";
+            else if (type === "grenade") inputId = "grenadeKillImgInp";
+            else if (type === "dom") inputId = "dominationImgInp";
+
+            const input = document.getElementById(inputId);
+            if (!input || !input.files[0]) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                notifImages[type] = e.target.result;
+            };
+            reader.readAsDataURL(input.files[0]);
+        };
+
         window.sendEvent = function (type) {
             const teamId = document.getElementById("pTeam").value;
             const team = teams.find(t => t.id === teamId);
             if (!team) return;
+
+            let customImg = "";
+            if (type === "FIRST KILL") customImg = notifImages.first;
+            else if (type === "GRENADE KILL") customImg = notifImages.grenade;
+            else if (type === "DOMINATING") customImg = notifImages.dom;
+
             set(activeEventRef, {
                 type,
                 player: document.getElementById("pName").value,
                 logo: team.img,
+                customImg,
                 ts: Date.now()
             });
         };
@@ -441,6 +514,25 @@
             if (idx === -1) return;
             teams[idx][field] = field === "name" ? val : parseInt(val || 0);
             set(esportsDataRef, teams);
+        };
+
+        // Change slot number
+        window.updateSlot = function (id, val) {
+            const idx = teams.findIndex(t => t.id === id);
+            if (idx === -1) return;
+            teams[idx].slot = parseInt(val || 0);
+            set(esportsDataRef, teams);
+            render();
+        };
+
+        // Kill all alive players in a team
+        window.killAllAlive = function (id) {
+            const idx = teams.findIndex(t => t.id === id);
+            if (idx === -1) return;
+            const statusArr = teams[idx].status;
+            teams[idx].status = statusArr.map(s => (s > 0 ? 0 : s));
+            set(esportsDataRef, teams);
+            render();
         };
 
         window.cycleStatus = function (id, si) {
